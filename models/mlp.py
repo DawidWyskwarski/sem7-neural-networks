@@ -119,30 +119,28 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
 
 
     def fit(self, X, y):
-
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y)
+    
         n_samples, n_features = X.shape
-        self.classes_ = np.unique(y)  
-
+        self.classes_ = np.unique(y)
+    
         self._initialize_layers(n_features)
-
+    
         for _ in range(self.epochs):
-                    
             indices = np.arange(n_samples)
             np.random.shuffle(indices)
-
-            for i in range(n_samples):
-
-                X_tmp = X[i]
-                y_tmp = y[i]
-
-                y_predicted = self.forward(X_tmp)
-                self.backward(y_tmp, y_predicted)
-
+    
+            for i in indices:
+                y_predicted = self.forward(X[i])
+                self.backward(y[i], y_predicted)
+    
         return self
-
-
+    
+    
     def predict(self, X):
-       return np.array([int(self.forward(x)[0] >= 0.5) for x in X])
+        X = np.asarray(X, dtype=float)
+        return np.array([int(self.forward(x)[0] >= 0.5) for x in X])
 
 
     def _initialize_layers(self, input_size):
