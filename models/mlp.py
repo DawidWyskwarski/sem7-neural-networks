@@ -14,75 +14,47 @@ from models.loss_functions import LossFunction
 from models.weight_initializer import WeightInitializer
 
 
-class Neuron:
-    def __init__(
-        self,
-        activation_function: ActivationFunction,
-        weight_initializer: WeightInitializer,
-        input_dim: int,
-        learning_rate: float,
-    ):
-        self.activation_function = activation_function
-
-        self.learning_rate = learning_rate
-
-        self.weights_ = weight_initializer.initialize(input_dim)
-        self.bias = 0
-
-        self.cache_input = None
-        self.cache_transformed = None
-
-    def forward(self, input):
-        self.cache_input = input
-        self.cache_transformed = (input @ self.weights_) + self.bias
-
-        return self.activation_function.apply(self.cache_transformed)
-
-    def backward(self, derivative):
-        base_derivative = derivative * self.activation_function.derivative(
-            self.cache_transformed
-        )
-
-        new_derivative = base_derivative * self.weights_
-
-        dw = base_derivative * self.cache_input
-        db = base_derivative
-
-        self.weights_ -= self.learning_rate * dw.T
-        self.bias -= self.learning_rate * db
-
-        return new_derivative
-
-
 class Layer:
     def __init__(
         self,
         size: int,
+        input_dim: int,
         activation_function: ActivationFunction,
         weight_initializer: WeightInitializer,
-        input_dim: int,
         learning_rate: float,
     ):
-        self.neurons = [
-            Neuron(
-                activation_function=activation_function,
-                weight_initializer=weight_initializer,
-                input_dim=input_dim,
-                learning_rate=learning_rate,
-            )
-            for _ in range(size)
-        ]
+        self.activation_function = activation_function
+        self.learning_rate = learning_rate
+        self.weights_ = weight_initializer.initialize((size, input_dim))
+        self.biases_ = np.zeros((1,size))
+
+        self.cache_input = None
+        self.cache_transformed = None
+
 
     def forward(self, X):
-        return np.array([neuron.forward(X) for neuron in self.neurons])
+        self.cache_input = X
+        self.cache_transformed = X @ self.weights_.T + self.biases_
+
+        return self.activation_function.apply(self.cache_transformed)
+
 
     def backward(self, derivative):
-        grad_input = np.zeros_like(self.neurons[0].weights_)
+        n = self.cache_input.shape[0]
+        
+        base_derivative = derivative * self.activation_function.derivative(
+            self.cache_transformed
+        )
 
-        for neuron, d in zip(self.neurons, derivative):
-            grad_input += neuron.backward(d)
+        new_derivative = base_derivative @ self.weights_
 
-        return grad_input
+        dw = base_derivative.T @ self.cache_input
+        db = base_derivative.sum(axis=0, keepdims=True)
+
+        self.weights_ -= self.learning_rate * dw
+        self.biases_ -= self.learning_rate * db
+
+        return new_derivative
 
 
 class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
@@ -93,6 +65,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         weight_initializer: WeightInitializer,
         loss_function: LossFunction,
         learning_rate: float = 0.01,
+        batch_size: int = 32, 
         max_iter: int = 1000,
         stop_criterion: Optional[Callable[[dict], bool]] = None,
     ):
@@ -103,6 +76,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         self.weight_initializer = weight_initializer
         self.learning_rate = learning_rate
 
+        self.batch_size = batch_size
         self.max_iter = max_iter
         self.stop_criterion = stop_criterion
 
@@ -131,7 +105,8 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         if self.layers == []:
             raise RuntimeError("Layers not initialized")
 
-        gradient = self.loss_function.derivative(y, predicted)
+        y = np.asarray(y, dtype=float).reshape(predicted.shape)
+        gradient = self.loss_function.derivative(y, predicted) / predicted.shape[0]
 
         for layer in reversed(self.layers):
             gradient = layer.backward(gradient)
@@ -156,9 +131,16 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
             indices = np.arange(n_samples)
             np.random.shuffle(indices)
 
-            for i in indices:
-                y_predicted = self.forward(X[i])
-                self.backward(y[i], y_predicted)
+            for batch_start_idx in range(0, n_samples, self.batch_size):
+                batch_indices = indices[
+                    batch_start_idx : batch_start_idx + self.batch_size
+                ]
+
+                X_batch = X[batch_indices]
+                y_batch = y[batch_indices]
+
+                y_batch_predicted = self.forward(X_batch)
+                self.backward(y_batch, y_batch_predicted)
 
             self._update_history(X, y)
 
@@ -169,11 +151,11 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
 
     def predict(self, X):
         X = np.asarray(X, dtype=float)
-        return np.array([int(self.forward(x)[0] >= 0.5) for x in X])
+        return (self.forward(X).ravel() >= 0.5).astype(int)
 
     def predict_proba(self, X):
         X = np.asarray(X, dtype=float)
-        p1 = np.array([self.forward(x)[0] for x in X])
+        p1 = self.forward(X).ravel()
         return np.column_stack([1 - p1, p1])
 
     def _initialize_layers(self, input_size):
