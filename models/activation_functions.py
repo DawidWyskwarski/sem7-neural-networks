@@ -1,10 +1,13 @@
+from abc import ABC, abstractmethod
 import numpy as np
 
 
-class ActivationFunction:
+class ActivationFunction(ABC):
+    @abstractmethod
     def apply(self, input):
         pass
 
+    @abstractmethod
     def derivative(self, input):
         pass
 

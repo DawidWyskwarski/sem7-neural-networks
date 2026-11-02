@@ -1,10 +1,13 @@
+from abc import ABC, abstractmethod
 import numpy as np
 
 
-class LossFunction:
+class LossFunction(ABC):
+    @abstractmethod
     def apply(self, y, predicted):
         pass
 
+    @abstractmethod
     def derivative(self, y, predicted):
         pass
 

@@ -1,17 +1,14 @@
 from typing import Callable, Optional
+import copy
 
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
-from sklearn.metrics import (
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score
-)
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 from models.activation_functions import ActivationFunction, Sigmoid
 from models.loss_functions import LossFunction
-from models.weight_initializer import WeightInitializer
+from models.weight_initializer import WeightInitializer, NormalInitializer
+from models.optimizer import Optimizer
 
 
 class Layer:
@@ -21,16 +18,19 @@ class Layer:
         input_dim: int,
         activation_function: ActivationFunction,
         weight_initializer: WeightInitializer,
-        learning_rate: float,
+        optimizer: Optimizer,
     ):
         self.activation_function = activation_function
-        self.learning_rate = learning_rate
+        self.optimizer = optimizer
+
         self.weights_ = weight_initializer.initialize((size, input_dim))
-        self.biases_ = np.zeros((1,size))
+        self.biases_ = np.zeros((1, size))
+
+        self.weight_optimizer = copy.deepcopy(optimizer)
+        self.bias_optimizer = copy.deepcopy(optimizer)
 
         self.cache_input = None
         self.cache_transformed = None
-
 
     def forward(self, X):
         self.cache_input = X
@@ -38,10 +38,7 @@ class Layer:
 
         return self.activation_function.apply(self.cache_transformed)
 
-
     def backward(self, derivative):
-        n = self.cache_input.shape[0]
-        
         base_derivative = derivative * self.activation_function.derivative(
             self.cache_transformed
         )
@@ -51,8 +48,8 @@ class Layer:
         dw = base_derivative.T @ self.cache_input
         db = base_derivative.sum(axis=0, keepdims=True)
 
-        self.weights_ -= self.learning_rate * dw
-        self.biases_ -= self.learning_rate * db
+        self.weights_ -= self.weight_optimizer.step(dw)
+        self.biases_ -= self.bias_optimizer.step(db)
 
         return new_derivative
 
@@ -61,11 +58,11 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
     def __init__(
         self,
         hidden_layer_sizes: list[int],
+        loss_function: LossFunction,
         activation_function: ActivationFunction,
         weight_initializer: WeightInitializer,
-        loss_function: LossFunction,
-        learning_rate: float = 0.01,
-        batch_size: int = 32, 
+        optimizer: Optimizer,
+        batch_size: int = 32,
         max_iter: int = 1000,
         stop_criterion: Optional[Callable[[dict], bool]] = None,
     ):
@@ -74,7 +71,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
 
         self.activation_function = activation_function
         self.weight_initializer = weight_initializer
-        self.learning_rate = learning_rate
+        self.optimizer = optimizer
 
         self.batch_size = batch_size
         self.max_iter = max_iter
@@ -169,7 +166,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
                     size=layer_size,
                     input_dim=previous_size,
                     weight_initializer=self.weight_initializer,
-                    learning_rate=self.learning_rate,
+                    optimizer=self.optimizer,
                     activation_function=self.activation_function,
                 )
             )
@@ -180,8 +177,8 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
             Layer(
                 size=1,
                 input_dim=previous_size,
-                weight_initializer=self.weight_initializer,
-                learning_rate=self.learning_rate,
+                weight_initializer=NormalInitializer(0.01),
+                optimizer=self.optimizer,
                 activation_function=Sigmoid(),
             )
         )
