@@ -1,26 +1,36 @@
 from abc import ABC, abstractmethod
+from typing import Optional
+
 import numpy as np
 
 
 class WeightInitializer(ABC):
     @abstractmethod
-    def initialize(self, input_dim: tuple):
+    def initialize(self, input_dim: tuple, rng: Optional[np.random.Generator] = None):
         pass
 
 
 class ZeroInitializer(WeightInitializer):
-    def initialize(self, input_dim: tuple):
+    def initialize(self, input_dim: tuple, rng: Optional[np.random.Generator] = None):
         return np.zeros(input_dim)
 
 
 class HeInitializer(WeightInitializer):
-    def initialize(self, input_dim: tuple):
-        return np.random.normal(0, np.sqrt(2 / input_dim), input_dim)
+    def __init__(self, random_state: Optional[int] = None):
+        self.random_state = random_state
+
+    def initialize(self, input_dim: tuple, rng: Optional[np.random.Generator] = None):
+        rng = rng if rng is not None else np.random.default_rng(self.random_state)
+        fan_in = input_dim[0]
+        std = np.sqrt(2.0 / fan_in)
+        return rng.normal(0, std, size=input_dim)
 
 
 class NormalInitializer(WeightInitializer):
-    def __init__(self, deviation: float):
+    def __init__(self, deviation: float, random_state: Optional[int] = None):
         self.deviation = deviation
+        self.random_state = random_state
 
-    def initialize(self, input_dim: tuple):
-        return np.random.normal(0, self.deviation, input_dim)
+    def initialize(self, input_dim: tuple, rng: Optional[np.random.Generator] = None):
+        rng = rng if rng is not None else np.random.default_rng(self.random_state)
+        return rng.normal(0, self.deviation, input_dim)

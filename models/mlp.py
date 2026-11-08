@@ -2,6 +2,7 @@ from typing import Callable, Optional
 import copy
 
 import numpy as np
+import matplotlib.pyplot as plt
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
@@ -19,11 +20,12 @@ class Layer:
         activation_function: ActivationFunction,
         weight_initializer: WeightInitializer,
         optimizer: Optimizer,
+        rng: Optional[np.random.Generator] = None,
     ):
         self.activation_function = activation_function
         self.optimizer = optimizer
 
-        self.weights_ = weight_initializer.initialize((size, input_dim))
+        self.weights_ = weight_initializer.initialize((size, input_dim), rng=rng)
         self.biases_ = np.zeros((1, size))
 
         self.weight_optimizer = copy.deepcopy(optimizer)
@@ -65,6 +67,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         batch_size: int = 32,
         max_iter: int = 1000,
         stop_criterion: Optional[Callable[[dict], bool]] = None,
+        random_state: Optional[int] = None,
     ):
         self.hidden_layer_sizes = hidden_layer_sizes
         self.loss_function = loss_function
@@ -76,6 +79,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         self.batch_size = batch_size
         self.max_iter = max_iter
         self.stop_criterion = stop_criterion
+        self.random_state = random_state
 
         self.layers: list[Layer] = []
 
@@ -115,7 +119,8 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         n_samples, n_features = X.shape
         self.classes_ = np.unique(y)
 
-        self._initialize_layers(n_features)
+        rng = np.random.default_rng(self.random_state)
+        self._initialize_layers(n_features, rng)
         self.history = {
             "loss": [],
             "f1_score": [],
@@ -126,7 +131,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
 
         for _ in range(self.max_iter):
             indices = np.arange(n_samples)
-            np.random.shuffle(indices)
+            rng.shuffle(indices)
 
             for batch_start_idx in range(0, n_samples, self.batch_size):
                 batch_indices = indices[
@@ -155,7 +160,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         p1 = self.forward(X).ravel()
         return np.column_stack([1 - p1, p1])
 
-    def _initialize_layers(self, input_size):
+    def _initialize_layers(self, input_size, rng: Optional[np.random.Generator] = None):
         self.layers = []
 
         previous_size = input_size
@@ -168,6 +173,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
                     weight_initializer=self.weight_initializer,
                     optimizer=self.optimizer,
                     activation_function=self.activation_function,
+                    rng=rng,
                 )
             )
 
@@ -177,9 +183,12 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
             Layer(
                 size=1,
                 input_dim=previous_size,
-                weight_initializer=NormalInitializer(0.01),
+                weight_initializer=NormalInitializer(
+                    0.01, random_state=self.random_state
+                ),
                 optimizer=self.optimizer,
                 activation_function=Sigmoid(),
+                rng=rng,
             )
         )
 
@@ -198,3 +207,38 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         self.history["precision"].append(epoch_prec)
         self.history["recall"].append(epoch_rec)
         self.history["f1_score"].append(epoch_f1)
+
+    def plot_history(self, figsize=(14, 8), ncols: int = 3):
+        metrics = {
+            name: values for name, values in self.history.items() if len(values) > 0
+        }
+
+        n_plots = len(metrics)
+        ncols = min(ncols, n_plots)
+        nrows = int(np.ceil(n_plots / ncols))
+
+        fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
+        axes_flat = axes.ravel()
+
+        for ax, (name, values) in zip(axes_flat, metrics.items()):
+            ax.plot(range(1, len(values) + 1), values, marker="o", markersize=3)
+            ax.set_title(name.replace("_", " ").title())
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel(name.replace("_", " "))
+            ax.grid(True, alpha=0.3)
+
+        for ax in axes_flat[n_plots:]:
+            ax.set_visible(False)
+
+        fig.suptitle(
+            "MLP Hyperparameters: "
+            f"hidden_layer_sizes={self.hidden_layer_sizes}, "
+            f"loss={self.loss_function.__class__.__name__}, "
+            f"activation={self.activation_function.__class__.__name__}, "
+            f"initializer={self.weight_initializer.__class__.__name__}, "
+            f"optimizer={self.optimizer.__class__.__name__}, "
+            f"batch_size={self.batch_size}, max_iter={self.max_iter}"
+        )
+        fig.tight_layout()
+
+        return fig, axes
