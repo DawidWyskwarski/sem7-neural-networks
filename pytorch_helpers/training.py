@@ -41,10 +41,7 @@ class _TorchClassifier(ABC):
         pass
 
     def train(
-        self,
-        dataloader: DataLoader,
-        max_iter: int,
-        verbose: bool = False
+        self, dataloader: DataLoader, max_iter: int, verbose: bool = False
     ) -> None:
         self.history = TrainingHistory()
 

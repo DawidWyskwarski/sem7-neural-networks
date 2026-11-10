@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 
 
 class TrainingHistory:
-    
     def __init__(self):
         self.loss = []
         self.accuracy = []
