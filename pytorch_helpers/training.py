@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from collections import defaultdict
 
 import torch
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
@@ -7,6 +6,8 @@ from torch.nn import Module
 from torch.nn.modules.loss import _WeightedLoss
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
+
+from helpers.training_history import TrainingHistory
 
 
 class _TorchClassifier(ABC):
@@ -21,7 +22,7 @@ class _TorchClassifier(ABC):
         self.model = model.to(device)
         self.loss_fn = loss_fn
         self.optimizer = optimizer
-        self.history: dict[str, list[float]] = defaultdict(list)
+        self.history = TrainingHistory()
 
     def _run_epoch(self, dataloader: DataLoader) -> None:
         self.model.train()
@@ -45,6 +46,8 @@ class _TorchClassifier(ABC):
         max_iter: int,
         verbose: bool = False
     ) -> None:
+        self.history = TrainingHistory()
+
         for e in range(max_iter):
             if verbose:
                 print(f"Epoch: {e}")
@@ -53,8 +56,25 @@ class _TorchClassifier(ABC):
             self._log(self.evaluate(dataloader))
 
     def _log(self, metrics: dict[str, float]) -> None:
-        for name, value in metrics.items():
-            self.history[name].append(value)
+        self.history.append(
+            loss=metrics["loss"],
+            accuracy=metrics["accuracy"],
+            f1_score=metrics["f1_score"],
+            precision=metrics["precision"],
+            recall=metrics["recall"],
+        )
+
+    def plot_history(self, figsize=(14, 8), ncols: int = 3):
+        return self.history.plot(
+            figsize=figsize,
+            ncols=ncols,
+            title=(
+                "Torch Classifier: "
+                f"model={self.model.__class__.__name__}, "
+                f"loss={self.loss_fn.__class__.__name__}, "
+                f"optimizer={self.optimizer.__class__.__name__}"
+            ),
+        )
 
     @staticmethod
     def _compute_metrics(
@@ -73,7 +93,7 @@ class _TorchClassifier(ABC):
             "accuracy": accuracy_score(y_true, y_pred),
             "precision": precision,
             "recall": recall,
-            "f1": f1,
+            "f1_score": f1,
         }
 
 

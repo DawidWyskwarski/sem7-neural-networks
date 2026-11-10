@@ -2,10 +2,10 @@ from typing import Callable, Optional
 import copy
 
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
+from helpers.training_history import TrainingHistory
 from models.activation_functions import ActivationFunction, Sigmoid
 from models.loss_functions import LossFunction
 from models.weight_initializer import WeightInitializer, NormalInitializer
@@ -66,7 +66,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         optimizer: Optimizer,
         batch_size: int = 32,
         max_iter: int = 1000,
-        stop_criterion: Optional[Callable[[dict], bool]] = None,
+        stop_criterion: Optional[Callable[[TrainingHistory], bool]] = None,
         random_state: Optional[int] = None,
     ):
         self.hidden_layer_sizes = hidden_layer_sizes
@@ -83,13 +83,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
 
         self.layers: list[Layer] = []
 
-        self.history: dict = {
-            "loss": [],
-            "f1_score": [],
-            "precision": [],
-            "recall": [],
-            "accuracy": [],
-        }
+        self.history = TrainingHistory()
 
     def forward(self, input):
         if self.layers == []:
@@ -121,13 +115,7 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
 
         rng = np.random.default_rng(self.random_state)
         self._initialize_layers(n_features, rng)
-        self.history = {
-            "loss": [],
-            "f1_score": [],
-            "precision": [],
-            "recall": [],
-            "accuracy": [],
-        }
+        self.history = TrainingHistory()
 
         for _ in range(self.max_iter):
             indices = np.arange(n_samples)
@@ -196,49 +184,25 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         p1 = self.predict_proba(X)[:, 1]
         y_pred = (p1 >= 0.5).astype(int)
 
-        epoch_loss = float(np.mean(self.loss_function.apply(y, p1)))
-        epoch_acc = accuracy_score(y, y_pred)
-        epoch_prec = precision_score(y, y_pred, zero_division=0)
-        epoch_rec = recall_score(y, y_pred, zero_division=0)
-        epoch_f1 = f1_score(y, y_pred, zero_division=0)
-
-        self.history["loss"].append(epoch_loss)
-        self.history["accuracy"].append(epoch_acc)
-        self.history["precision"].append(epoch_prec)
-        self.history["recall"].append(epoch_rec)
-        self.history["f1_score"].append(epoch_f1)
+        self.history.append(
+            loss=float(np.mean(self.loss_function.apply(y, p1))),
+            accuracy=accuracy_score(y, y_pred),
+            precision=precision_score(y, y_pred, zero_division=0),
+            recall=recall_score(y, y_pred, zero_division=0),
+            f1_score=f1_score(y, y_pred, zero_division=0),
+        )
 
     def plot_history(self, figsize=(14, 8), ncols: int = 3):
-        metrics = {
-            name: values for name, values in self.history.items() if len(values) > 0
-        }
-
-        n_plots = len(metrics)
-        ncols = min(ncols, n_plots)
-        nrows = int(np.ceil(n_plots / ncols))
-
-        fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
-        axes_flat = axes.ravel()
-
-        for ax, (name, values) in zip(axes_flat, metrics.items()):
-            ax.plot(range(1, len(values) + 1), values, marker="o", markersize=3)
-            ax.set_title(name.replace("_", " ").title())
-            ax.set_xlabel("Epoch")
-            ax.set_ylabel(name.replace("_", " "))
-            ax.grid(True, alpha=0.3)
-
-        for ax in axes_flat[n_plots:]:
-            ax.set_visible(False)
-
-        fig.suptitle(
-            "MLP Hyperparameters: "
-            f"hidden_layer_sizes={self.hidden_layer_sizes}, "
-            f"loss={self.loss_function.__class__.__name__}, "
-            f"activation={self.activation_function.__class__.__name__}, "
-            f"initializer={self.weight_initializer.__class__.__name__}, "
-            f"optimizer={self.optimizer.__class__.__name__}, "
-            f"batch_size={self.batch_size}, max_iter={self.max_iter}"
+        return self.history.plot(
+            figsize=figsize,
+            ncols=ncols,
+            title=(
+                "MLP Hyperparameters: "
+                f"hidden_layer_sizes={self.hidden_layer_sizes}, "
+                f"loss={self.loss_function.__class__.__name__}, "
+                f"activation={self.activation_function.__class__.__name__}, "
+                f"initializer={self.weight_initializer.__class__.__name__}, "
+                f"optimizer={self.optimizer.__class__.__name__}, "
+                f"batch_size={self.batch_size}, max_iter={self.max_iter}"
+            ),
         )
-        fig.tight_layout()
-
-        return fig, axes
