@@ -21,7 +21,8 @@ class HeInitializer(WeightInitializer):
 
     def initialize(self, input_dim: tuple, rng: Optional[np.random.Generator] = None):
         rng = rng if rng is not None else np.random.default_rng(self.random_state)
-        fan_in = input_dim[0]
+        # weight shape is (out_features, in_features); He/Kaiming fan_in uses in_features
+        fan_in = input_dim[1]
         std = np.sqrt(2.0 / fan_in)
         return rng.normal(0, std, size=input_dim)
 

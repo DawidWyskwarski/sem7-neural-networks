@@ -109,11 +109,10 @@ class TorchBinaryClassifier(_TorchClassifier):
             for X, y in dataloader:
                 X, y = X.to(self.device), y.to(self.device)
 
-                logits = self.model(X)
-                total_loss += self.loss_fn(logits, y).item() * len(X)
+                probs = self.model(X)
+                total_loss += self.loss_fn(probs, y).item() * len(X)
 
-                probs = torch.sigmoid(logits.squeeze(1))
-                preds.append((probs > self.threshold).long().cpu())
+                preds.append((probs.squeeze(1) > self.threshold).long().cpu())
                 targets.append(y.squeeze(1).long().cpu())
 
         return self._compute_metrics(

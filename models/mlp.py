@@ -65,9 +65,11 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         weight_initializer: WeightInitializer,
         optimizer: Optimizer,
         batch_size: int = 32,
+        shuffle: bool = True,
         max_iter: int = 1000,
         stop_criterion: Optional[Callable[[TrainingHistory], bool]] = None,
         random_state: Optional[int] = None,
+        warm_start: bool = False,
     ):
         self.hidden_layer_sizes = hidden_layer_sizes
         self.loss_function = loss_function
@@ -77,9 +79,11 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         self.optimizer = optimizer
 
         self.batch_size = batch_size
+        self.shuffle = shuffle
         self.max_iter = max_iter
         self.stop_criterion = stop_criterion
         self.random_state = random_state
+        self.warm_start = warm_start
 
         self.layers: list[Layer] = []
 
@@ -114,12 +118,16 @@ class MultiLayerPerceptron(ClassifierMixin, BaseEstimator):
         self.classes_ = np.unique(y)
 
         rng = np.random.default_rng(self.random_state)
-        self._initialize_layers(n_features, rng)
+        if not (self.warm_start and self.layers):
+            self._initialize_layers(n_features, rng)
         self.history = TrainingHistory()
 
         for _ in range(self.max_iter):
+           
             indices = np.arange(n_samples)
-            rng.shuffle(indices)
+            
+            if self.shuffle:
+                rng.shuffle(indices)
 
             for batch_start_idx in range(0, n_samples, self.batch_size):
                 batch_indices = indices[
